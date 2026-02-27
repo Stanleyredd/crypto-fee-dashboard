@@ -414,3 +414,58 @@ def seed_exchanges_and_fees(
         )
 
     con.commit()
+
+
+def ensure_seed_data(con: sqlite3.Connection) -> None:
+    cur = con.cursor()
+    row = cur.execute("SELECT COUNT(*) AS cnt FROM exchanges").fetchone()
+    if row and int(row["cnt"]) > 0:
+        return
+
+    exchanges = [
+        ("Bitvavo", "exchange", "https://bitvavo.com"),
+        ("Coinbase", "exchange", "https://coinbase.com"),
+        ("Bybit", "exchange", "https://www.bybit.com"),
+        ("Kraken", "exchange", "https://www.kraken.com"),
+        ("Binance", "exchange", "https://www.binance.com"),
+    ]
+
+    fees_by_name = {
+        "Bitvavo": {
+            "trading_fee_pct": 0.25,
+            "deposit_ideal_fee_eur": 0.0,
+            "withdraw_eur_fee_eur": 0.0,
+            "spread_estimate_pct": 0.10,
+            "source_url": "",
+        },
+        "Coinbase": {
+            "trading_fee_pct": 0.60,
+            "deposit_ideal_fee_eur": 0.0,
+            "withdraw_eur_fee_eur": 0.0,
+            "spread_estimate_pct": 0.80,
+            "source_url": "",
+        },
+        "Bybit": {
+            "trading_fee_pct": 0.10,
+            "deposit_ideal_fee_eur": 0.0,
+            "withdraw_eur_fee_eur": 0.0,
+            "spread_estimate_pct": 0.20,
+            "source_url": "",
+        },
+        "Kraken": {
+            "trading_fee_pct": 0.26,
+            "deposit_ideal_fee_eur": 0.0,
+            "withdraw_eur_fee_eur": 0.0,
+            "spread_estimate_pct": 0.20,
+            "source_url": "",
+        },
+        "Binance": {
+            "trading_fee_pct": 0.10,
+            "deposit_ideal_fee_eur": 0.0,
+            "withdraw_eur_fee_eur": 0.0,
+            "spread_estimate_pct": 0.15,
+            "source_url": "",
+        },
+    }
+
+    seed_exchanges_and_fees(con, exchanges=exchanges, fees_by_name=fees_by_name)

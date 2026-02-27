@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from collectors import get_collector, get_supported_exchange_names
-from db import connect, get_fee_row, init_db, list_exchanges
+from db import connect, ensure_seed_data, get_fee_row, init_db, list_exchanges
 from fees_service import (
     ServiceError,
     add_exchange_with_defaults,
@@ -426,6 +426,7 @@ render_header()
 
 init_db()
 con = connect()
+ensure_seed_data(con)
 
 st.sidebar.markdown("### Refresh")
 auto_refresh_enabled = st.sidebar.toggle("Auto refresh", value=True)
