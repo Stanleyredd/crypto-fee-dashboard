@@ -1,0 +1,28 @@
+SKIP Amdax (no collector)
+SKIP BLOX (no collector)
+OK Bitvavo bid=54812.0 ask=54820.0 ts=2026-02-23T03:30:00.745096+00:00
+OK Coinbase bid=54811.85 ask=54818.3 ts=2026-02-23T03:30:00.845854+00:00
+SKIP Coinmerce (no collector)
+SKIP Finst (no collector)
+SKIP eToro (no collector)
+SKIP Amdax (no collector)
+SKIP BLOX (no collector)
+OK Bitvavo bid=54807.0 ask=54810.0 ts=2026-02-23T03:30:04.183138+00:00
+OK Coinbase bid=54808.5 ask=54820.42 ts=2026-02-23T03:30:04.373586+00:00
+SKIP Coinmerce (no collector)
+SKIP Finst (no collector)
+SKIP eToro (no collector)
+SKIP Amdax (no collector)
+SKIP BLOX (no collector)
+OK Bitvavo bid=54800.0 ask=54805.0 ts=2026-02-23T03:35:00.328119+00:00
+OK Coinbase bid=54801.72 ask=54812.23 ts=2026-02-23T03:35:00.459950+00:00
+SKIP Coinmerce (no collector)
+SKIP Finst (no collector)
+SKIP eToro (no collector)
+SKIP Amdax (no collector)
+SKIP BLOX (no collector)
+OK Bitvavo bid=54916.0 ask=54921.0 ts=2026-02-23T03:40:01.134981+00:00
+OK Coinbase bid=54916.78 ask=54930.63 ts=2026-02-23T03:40:01.252530+00:00
+SKIP Coinmerce (no collector)
+SKIP Finst (no collector)
+SKIP eToro (no collector)
