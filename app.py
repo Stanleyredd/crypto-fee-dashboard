@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 import pandas as pd
 import streamlit as st
@@ -13,7 +14,6 @@ from fees_service import (
     fetch_and_store_bitvavo_quote,
     save_exchange_fees,
 )
-from streamlit_autorefresh import st_autorefresh
 
 
 st.set_page_config(
@@ -427,7 +427,22 @@ render_header()
 init_db()
 con = connect()
 
-st_autorefresh(interval=60 * 1000, key="auto_refresh")
+st.sidebar.markdown("### Refresh")
+auto_refresh_enabled = st.sidebar.toggle("Auto refresh", value=True)
+refresh_interval_label = st.sidebar.selectbox("Interval", ["15s", "30s", "60s"], index=2)
+refresh_interval_seconds = {"15s": 15, "30s": 30, "60s": 60}[refresh_interval_label]
+
+if "last_refresh_ts" not in st.session_state:
+    st.session_state["last_refresh_ts"] = time.time()
+
+if auto_refresh_enabled:
+    now = time.time()
+    elapsed = now - st.session_state["last_refresh_ts"]
+    if elapsed >= refresh_interval_seconds:
+        st.session_state["last_refresh_ts"] = now
+        st.rerun()
+else:
+    st.session_state["last_refresh_ts"] = time.time()
 
 symbol, amount = render_controls(con)
 dashboard_exchanges = _get_dashboard_exchanges(con)
