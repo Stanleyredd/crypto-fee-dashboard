@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual envs
+.venv/
+.venvs/
+venv/
+
+# Streamlit
+.streamlit/
+
+# Local data/logs
+data/cron.log
+data/*.log
+
+# (Optioneel) database niet in git
+data/app.db
+
+# OS
+.DS_Store
