@@ -163,9 +163,12 @@ def _get_dashboard_exchanges(con) -> list[str]:
     return [str(row["name"]) for row in rows if str(row["name"]) in supported]
 
 
-def _refresh_live_quotes(con, symbol: str, exchange_names: list[str]) -> tuple[list[str], dict[str, str]]:
+def _refresh_live_quotes(
+    con, symbol: str, exchange_names: list[str]
+) -> tuple[list[str], dict[str, str], list[str]]:
     successes: list[str] = []
     failures: dict[str, str] = {}
+    fallback_used: list[str] = []
     for exchange_name in exchange_names:
         try:
             collector = get_collector(exchange_name)
@@ -176,11 +179,13 @@ def _refresh_live_quotes(con, symbol: str, exchange_names: list[str]) -> tuple[l
                 exchange_name=exchange_name,
             )
             successes.append(exchange_name)
+            if getattr(collector, "last_quote_mode", "") == "fallback_btcusdt_usdteur":
+                fallback_used.append(exchange_name)
         except Exception as exc:
             # Keep UI resilient if one exchange API is temporarily unavailable.
             failures[exchange_name] = str(exc)
             print(f"[live-refresh] {exchange_name}: {exc}")
-    return successes, failures
+    return successes, failures, fallback_used
 
 
 def render_controls(con):
@@ -222,9 +227,14 @@ def render_controls(con):
             fetch_clicked = st.button("Fetch Live Quotes", disabled=not exchange_names_for_fetch, use_container_width=True)
 
         if fetch_clicked:
-            refreshed, failed = _refresh_live_quotes(con, symbol=symbol, exchange_names=exchange_names_for_fetch)
+            refreshed, failed, fallback_used = _refresh_live_quotes(
+                con, symbol=symbol, exchange_names=exchange_names_for_fetch
+            )
+            st.session_state["fallback_exchanges"] = fallback_used
             if refreshed:
                 st.success(f"Live quotes updated for: {', '.join(refreshed)}")
+            if fallback_used:
+                st.info(f"Fallback used (USDT->EUR): {', '.join(fallback_used)}")
             if failed:
                 st.warning(
                     "Some exchanges failed: "
@@ -489,7 +499,16 @@ else:
 symbol, amount = render_controls(con)
 dashboard_exchanges = _get_dashboard_exchanges(con)
 
-_refresh_live_quotes(con, symbol=symbol, exchange_names=dashboard_exchanges)
+_, refresh_failures, fallback_used = _refresh_live_quotes(con, symbol=symbol, exchange_names=dashboard_exchanges)
+if "fallback_exchanges" not in st.session_state:
+    st.session_state["fallback_exchanges"] = []
+if fallback_used:
+    st.session_state["fallback_exchanges"] = fallback_used
+if refresh_failures:
+    st.warning(
+        "Live quote refresh issues: "
+        + "; ".join([f"{name}: {error}" for name, error in refresh_failures.items()])
+    )
 
 try:
     df = build_comparison_dataframe(con, symbol=symbol, amount=float(amount))
@@ -504,6 +523,9 @@ if not df.empty:
     df = df[df["Exchange"].isin(dashboard_exchanges)].copy()
     if "Spread source" in df.columns:
         df = df[df["Spread source"].astype(str).str.startswith("live")].copy()
+        fallback_set = set(st.session_state.get("fallback_exchanges", []))
+        if fallback_set:
+            df.loc[df["Exchange"].isin(fallback_set), "Spread source"] = "fallback (BTCUSDT * USDT->EUR)"
 
 render_table(df, symbol=symbol, amount=int(amount))
 render_debug(con, symbol=symbol)
