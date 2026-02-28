@@ -5,7 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from collectors import get_collector, get_supported_exchange_names
-from db import connect, ensure_seed_data, get_fee_row, init_db, list_exchanges
+from db import DB_PATH, connect, ensure_seed_data, get_fee_row, init_db, list_exchanges
 from fees_service import (
     ServiceError,
     add_exchange_with_defaults,
@@ -163,7 +163,9 @@ def _get_dashboard_exchanges(con) -> list[str]:
     return [str(row["name"]) for row in rows if str(row["name"]) in supported]
 
 
-def _refresh_live_quotes(con, symbol: str, exchange_names: list[str]) -> None:
+def _refresh_live_quotes(con, symbol: str, exchange_names: list[str]) -> tuple[list[str], dict[str, str]]:
+    successes: list[str] = []
+    failures: dict[str, str] = {}
     for exchange_name in exchange_names:
         try:
             collector = get_collector(exchange_name)
@@ -173,9 +175,12 @@ def _refresh_live_quotes(con, symbol: str, exchange_names: list[str]) -> None:
                 collector=collector,
                 exchange_name=exchange_name,
             )
+            successes.append(exchange_name)
         except Exception as exc:
             # Keep UI resilient if one exchange API is temporarily unavailable.
+            failures[exchange_name] = str(exc)
             print(f"[live-refresh] {exchange_name}: {exc}")
+    return successes, failures
 
 
 def render_controls(con):
@@ -214,24 +219,17 @@ def render_controls(con):
 
         with c4:
             st.markdown('<div class="control-label">Action</div>', unsafe_allow_html=True)
-            fetch_clicked = st.button("Fetch (nu)", disabled=not exchange_names_for_fetch, use_container_width=True)
+            fetch_clicked = st.button("Fetch Live Quotes", disabled=not exchange_names_for_fetch, use_container_width=True)
 
-        if fetch_clicked and selected_fetch_exchange:
-            try:
-                collector = get_collector(selected_fetch_exchange)
-            except ValueError as exc:
-                st.error(str(exc))
-            else:
-                try:
-                    fetch_and_store_bitvavo_quote(
-                        con,
-                        symbol=symbol,
-                        collector=collector,
-                        exchange_name=selected_fetch_exchange,
-                    )
-                    st.success(f"{selected_fetch_exchange} quote updated")
-                except ServiceError as exc:
-                    st.warning(str(exc))
+        if fetch_clicked:
+            refreshed, failed = _refresh_live_quotes(con, symbol=symbol, exchange_names=exchange_names_for_fetch)
+            if refreshed:
+                st.success(f"Live quotes updated for: {', '.join(refreshed)}")
+            if failed:
+                st.warning(
+                    "Some exchanges failed: "
+                    + "; ".join([f"{name}: {error}" for name, error in failed.items()])
+                )
 
     return symbol, amount
 
@@ -421,6 +419,49 @@ def render_table(df: pd.DataFrame, symbol: str, amount: int) -> None:
         )
 
 
+def render_debug(con, symbol: str) -> None:
+    debug_enabled = st.sidebar.checkbox("Debug", value=False)
+    if not debug_enabled:
+        return
+
+    st.subheader("Debug")
+    st.write("DB:", str(DB_PATH))
+
+    exchanges = list_exchanges(con)
+    exchange_names = [str(row["name"]) for row in exchanges]
+    st.write("Exchanges:", exchange_names)
+
+    cur = con.cursor()
+    cur.execute(
+        """
+        SELECT e.name AS exchange,
+               COUNT(q.rowid) AS quote_count,
+               MAX(q.ts) AS latest_ts
+        FROM exchanges e
+        LEFT JOIN quotes q
+               ON q.exchange_id = e.id
+              AND q.symbol = ?
+        GROUP BY e.id, e.name
+        ORDER BY e.name
+        """,
+        (symbol,),
+    )
+    rows = cur.fetchall()
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Exchange": str(row["exchange"]),
+                    "Quote count": int(row["quote_count"]),
+                    "Latest ts": row["latest_ts"],
+                }
+                for row in rows
+            ]
+        ),
+        width="stretch",
+    )
+
+
 apply_light_style()
 render_header()
 
@@ -465,6 +506,7 @@ if not df.empty:
         df = df[df["Spread source"].astype(str).str.startswith("live")].copy()
 
 render_table(df, symbol=symbol, amount=int(amount))
+render_debug(con, symbol=symbol)
 st.divider()
 render_admin(con)
 
