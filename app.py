@@ -1,5 +1,7 @@
 from pathlib import Path
 import time
+import os
+import platform
 
 import pandas as pd
 import streamlit as st
@@ -157,10 +159,35 @@ def render_header() -> None:
         st.divider()
 
 
+def is_streamlit_cloud() -> bool:
+    if os.getenv("STREAMLIT_CLOUD"):
+        return True
+    if "streamlit" in platform.node().lower():
+        return True
+
+    # STREAMLIT_SERVER_PORT is also present in local `streamlit run`.
+    # Treat it as cloud only when secrets context is available.
+    if "STREAMLIT_SERVER_PORT" in os.environ and _has_cloud_secrets():
+        return True
+
+    return False
+
+
+def _has_cloud_secrets() -> bool:
+    try:
+        _ = dict(st.secrets)
+        return True
+    except Exception:
+        return False
+
+
 def _get_dashboard_exchanges(con) -> list[str]:
     supported = set(get_supported_exchange_names())
     rows = list_exchanges(con)
-    return [str(row["name"]) for row in rows if str(row["name"]) in supported]
+    names = [str(row["name"]) for row in rows if str(row["name"]) in supported]
+    if is_streamlit_cloud():
+        names = [name for name in names if name != "Bybit"]
+    return names
 
 
 def _refresh_live_quotes(
@@ -197,6 +224,10 @@ def render_controls(con):
         except Exception as exc:
             exchange_names_for_fetch = []
             st.error(f"Could not load exchanges for fetch: {exc}")
+
+        if is_streamlit_cloud():
+            st.info("Bybit disabled on Streamlit Cloud due to API restrictions (HTTP 403).")
+
         default_fetch_index = exchange_names_for_fetch.index("Bitvavo") if "Bitvavo" in exchange_names_for_fetch else 0
 
         c1, c2, c3, c4 = st.columns(4, gap="small", vertical_alignment="bottom")
@@ -436,6 +467,9 @@ def render_debug(con, symbol: str) -> None:
 
     st.subheader("Debug")
     st.write("DB:", str(DB_PATH))
+    st.write("Streamlit Cloud mode:", is_streamlit_cloud())
+    if is_streamlit_cloud():
+        st.info("Bybit disabled on Streamlit Cloud due to API restrictions (HTTP 403).")
 
     exchanges = list_exchanges(con)
     exchange_names = [str(row["name"]) for row in exchanges]
