@@ -1,5 +1,4 @@
 from pathlib import Path
-import time
 import os
 import platform
 
@@ -17,14 +16,14 @@ from fees_service import (
     save_exchange_fees,
 )
 
-# ✅ Alleen exchanges die op Streamlit Cloud werken (geen Binance/Bybit)
+# ✅ Alleen de 3 werkende exchanges tonen op Streamlit Cloud
 LIVE_EXCHANGES = ("Bitvavo", "Kraken", "Coinbase")
-
 
 st.set_page_config(
     page_title="KiralyAI | Crypto Exchange Cost Dashboard",
     page_icon="🧊",
     layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
 
@@ -129,10 +128,17 @@ def apply_light_style() -> None:
             background: #FFFFFF !important;
             color: #111827 !important;
         }
+
+        /* ✅ VERBERG sidebar + hamburger (zodat klanten geen refresh/debug zien) */
+        section[data-testid="stSidebar"] { display: none !important; }
+        button[kind="header"] { display: none !important; }
+
+        /* ✅ VERBERG Streamlit menu/footer */
+        #MainMenu { visibility: hidden; }
+        footer { visibility: hidden; }
+
         @media (max-width: 900px) {
-            .block-container {
-                padding-top: 0.5rem;
-            }
+            .block-container { padding-top: 0.5rem; }
         }
         </style>
         """,
@@ -170,19 +176,25 @@ def is_streamlit_cloud() -> bool:
         return True
     if "streamlit" in platform.node().lower():
         return True
-
-    # STREAMLIT_SERVER_PORT is also present in local `streamlit run`.
-    # Treat it as cloud only when secrets context is available.
-    if "STREAMLIT_SERVER_PORT" in os.environ and _has_cloud_secrets():
-        return True
-
     return False
 
 
-def _has_cloud_secrets() -> bool:
+def _is_admin_mode() -> bool:
+    """
+    Admin mode aanzetten via:
+    - Streamlit Cloud secrets: ADMIN_MODE="true"
+    OF
+    - URL param: ?admin=1  (handig voor jezelf)
+    """
     try:
-        _ = dict(st.secrets)
-        return True
+        qp = st.query_params
+        if str(qp.get("admin", "")).strip() in ("1", "true", "True", "yes"):
+            return True
+    except Exception:
+        pass
+
+    try:
+        return str(st.secrets.get("ADMIN_MODE", "false")).lower() == "true"
     except Exception:
         return False
 
@@ -204,6 +216,7 @@ def _refresh_live_quotes(
     successes: list[str] = []
     failures: dict[str, str] = {}
     fallback_used: list[str] = []
+
     for exchange_name in exchange_names:
         try:
             collector = get_collector(exchange_name)
@@ -214,12 +227,13 @@ def _refresh_live_quotes(
                 exchange_name=exchange_name,
             )
             successes.append(exchange_name)
+
             if getattr(collector, "last_quote_mode", "") == "fallback_btcusdt_usdteur":
                 fallback_used.append(exchange_name)
         except Exception as exc:
-            # Keep UI resilient if one exchange API is temporarily unavailable.
             failures[exchange_name] = str(exc)
             print(f"[live-refresh] {exchange_name}: {exc}")
+
     return successes, failures, fallback_used
 
 
@@ -247,21 +261,18 @@ def render_controls(con):
 
         with c2:
             st.markdown('<div class="control-label">Amount</div>', unsafe_allow_html=True)
-            amount = st.selectbox(
-                "Amount", [100, 1000, 10000], index=1, label_visibility="collapsed"
-            )
+            amount = st.selectbox("Amount", [100, 1000, 10000], index=1, label_visibility="collapsed")
 
         with c3:
             st.markdown('<div class="control-label">Live Exchange</div>', unsafe_allow_html=True)
             if exchange_names_for_fetch:
-                selected_fetch_exchange = st.selectbox(
+                _ = st.selectbox(
                     "Live quote exchange",
                     exchange_names_for_fetch,
                     index=default_fetch_index,
                     label_visibility="collapsed",
                 )
             else:
-                selected_fetch_exchange = None
                 st.info("No exchanges available.")
 
         with c4:
@@ -277,11 +288,17 @@ def render_controls(con):
                 con, symbol=symbol, exchange_names=exchange_names_for_fetch
             )
             st.session_state["fallback_exchanges"] = fallback_used
+
             if refreshed:
                 st.success(f"Live quotes updated for: {', '.join(refreshed)}")
+
+            # (Voor deze 3 exchanges verwacht je normaliter geen fallback,
+            # maar we laten het netjes zien als het ooit gebeurt.)
             if fallback_used:
                 st.info(f"Fallback used (USDT->EUR): {', '.join(fallback_used)}")
+
             if failed:
+                # filter naar LIVE_EXCHANGES zodat je nooit “spook exchanges” ziet
                 failed = {name: err for name, err in failed.items() if name in LIVE_EXCHANGES}
                 if failed:
                     st.warning(
@@ -430,8 +447,6 @@ def _resolve_total_column(df: pd.DataFrame, amount: int) -> str:
     if expected in df.columns:
         return expected
 
-    print(f"[render_table] expected total column missing: {expected}; available={list(df.columns)}")
-
     prefix_matches = [col for col in df.columns if str(col).startswith("Total € (op €")]
     if prefix_matches:
         return prefix_matches[0]
@@ -461,14 +476,17 @@ def render_table(df: pd.DataFrame, symbol: str, amount: int) -> None:
         total_col = _resolve_total_column(df, amount)
         df_display = df.copy()
         df_display.insert(0, "Status", "")
+
         cheapest_idx = df_display[total_col].idxmin()
         df_display.loc[cheapest_idx, "Status"] = "Cheapest"
 
         for col in ["Fee %", "Spread %", "Total %"]:
-            df_display[col] = df_display[col].map(_format_pct)
+            if col in df_display.columns:
+                df_display[col] = df_display[col].map(_format_pct)
 
         for col in [total_col, "iDEAL fee €", "EUR opname €"]:
-            df_display[col] = df_display[col].map(lambda v: f"€ {float(v):.2f}")
+            if col in df_display.columns:
+                df_display[col] = df_display[col].map(lambda v: f"€ {float(v):.2f}")
 
         st.dataframe(df_display, width="stretch")
         st.download_button(
@@ -476,15 +494,11 @@ def render_table(df: pd.DataFrame, symbol: str, amount: int) -> None:
             data=df.to_csv(index=False).encode("utf-8"),
             file_name=f"crypto_fee_comparison_{symbol}_{amount}.csv",
             mime="text/csv",
-            disabled=False,
         )
 
 
 def render_debug(con, symbol: str) -> None:
-    debug_enabled = st.sidebar.checkbox("Debug", value=False)
-    if not debug_enabled:
-        return
-
+    # Debug alleen in admin mode, dus klanten zien dit nooit
     st.subheader("Debug")
     st.write("DB:", str(DB_PATH))
     st.write("Streamlit Cloud mode:", is_streamlit_cloud())
@@ -525,41 +539,37 @@ def render_debug(con, symbol: str) -> None:
     )
 
 
+# -------------------------
+# App start
+# -------------------------
 apply_light_style()
 render_header()
+
+ADMIN_MODE = _is_admin_mode()
 
 init_db()
 con = connect()
 ensure_seed_data(con)
 
-st.sidebar.markdown("### Refresh")
-auto_refresh_enabled = st.sidebar.toggle("Auto refresh", value=True)
-refresh_interval_label = st.sidebar.selectbox("Interval", ["15s", "30s", "60s"], index=2)
-refresh_interval_seconds = {"15s": 15, "30s": 30, "60s": 60}[refresh_interval_label]
-
-if "last_refresh_ts" not in st.session_state:
-    st.session_state["last_refresh_ts"] = time.time()
-
-if auto_refresh_enabled:
-    now = time.time()
-    elapsed = now - st.session_state["last_refresh_ts"]
-    if elapsed >= refresh_interval_seconds:
-        st.session_state["last_refresh_ts"] = now
-        st.rerun()
-else:
-    st.session_state["last_refresh_ts"] = time.time()
-
 symbol, amount = render_controls(con)
+
 dashboard_exchanges = _get_dashboard_exchanges(con)
 
+# Let op: we refreshen niet automatisch (geen sidebar/timer); user klikt op Fetch Live Quotes.
+# Maar we proberen wél bij eerste load alvast live data te hebben:
 _, refresh_failures, fallback_used = _refresh_live_quotes(con, symbol=symbol, exchange_names=dashboard_exchanges)
+
 if "fallback_exchanges" not in st.session_state:
     st.session_state["fallback_exchanges"] = []
+
 if fallback_used:
     st.session_state["fallback_exchanges"] = fallback_used
+
 if refresh_failures:
+    # filter strikt naar LIVE_EXCHANGES
     refresh_failures = {name: err for name, err in refresh_failures.items() if name in LIVE_EXCHANGES}
-    if refresh_failures:
+    if refresh_failures and ADMIN_MODE:
+        # Alleen admin ziet dit soort waarschuwingen.
         st.warning(
             "Live quote refresh issues: "
             + "; ".join([f"{name}: {error}" for name, error in refresh_failures.items()])
@@ -574,20 +584,31 @@ except Exception as exc:
     st.error(f"Unexpected error while building dashboard: {exc}")
     df = pd.DataFrame()
 
+# ✅ Filter altijd naar alleen de 3 live exchanges
 if not df.empty:
     df = df[df["Exchange"].isin(dashboard_exchanges)].copy()
+
+    # Als je echt alleen live wil: laat live rows staan (fallback eruit)
     if "Spread source" in df.columns:
-        df = df[df["Spread source"].astype(str).str.startswith("live")].copy()
+        # we laten live + fallback toe, maar je kunt fallback ook eruit filteren als je wil.
+        # Voor nu: live en fallback toegestaan, maar fallback label netjes maken.
         fallback_set = set(st.session_state.get("fallback_exchanges", []))
         if fallback_set:
             df.loc[df["Exchange"].isin(fallback_set), "Spread source"] = "fallback (BTCUSDT * USDT->EUR)"
 
 render_table(df, symbol=symbol, amount=int(amount))
-render_debug(con, symbol=symbol)
-st.divider()
-render_admin(con)
+
+# ✅ Debug + Admin alleen voor jou (admin mode)
+if ADMIN_MODE:
+    st.divider()
+    render_debug(con, symbol=symbol)
+    st.divider()
+    render_admin(con)
 
 st.caption(
-    "Tip: vul echte fees + source links in via de Admin editor. Bitvavo/Coinbase spread is live als je een quote fetch doet."
+    "Tip: vul echte fees + source links in via de Admin editor. Bitvavo/Kraken/Coinbase spread is live als je een quote fetch doet."
+    if ADMIN_MODE
+    else ""
 )
+
 con.close()
