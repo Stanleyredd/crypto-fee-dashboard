@@ -17,6 +17,8 @@ from fees_service import (
     save_exchange_fees,
 )
 
+LIVE_EXCHANGES = ("Bitvavo", "Kraken", "Coinbase", "Binance")
+
 
 st.set_page_config(
     page_title="KiralyAI | Crypto Exchange Cost Dashboard",
@@ -183,11 +185,9 @@ def _has_cloud_secrets() -> bool:
 
 def _get_dashboard_exchanges(con) -> list[str]:
     supported = set(get_supported_exchange_names())
+    allowed = set(LIVE_EXCHANGES)
     rows = list_exchanges(con)
-    names = [str(row["name"]) for row in rows if str(row["name"]) in supported]
-    if is_streamlit_cloud():
-        names = [name for name in names if name != "Bybit"]
-    return names
+    return [str(row["name"]) for row in rows if str(row["name"]) in supported and str(row["name"]) in allowed]
 
 
 def _refresh_live_quotes(
@@ -224,9 +224,6 @@ def render_controls(con):
         except Exception as exc:
             exchange_names_for_fetch = []
             st.error(f"Could not load exchanges for fetch: {exc}")
-
-        if is_streamlit_cloud():
-            st.info("Bybit disabled on Streamlit Cloud due to API restrictions (HTTP 403).")
 
         default_fetch_index = exchange_names_for_fetch.index("Bitvavo") if "Bitvavo" in exchange_names_for_fetch else 0
 
@@ -267,10 +264,12 @@ def render_controls(con):
             if fallback_used:
                 st.info(f"Fallback used (USDT->EUR): {', '.join(fallback_used)}")
             if failed:
-                st.warning(
-                    "Some exchanges failed: "
-                    + "; ".join([f"{name}: {error}" for name, error in failed.items()])
-                )
+                failed = {name: err for name, err in failed.items() if name in LIVE_EXCHANGES}
+                if failed:
+                    st.warning(
+                        "Some exchanges failed: "
+                        + "; ".join([f"{name}: {error}" for name, error in failed.items()])
+                    )
 
     return symbol, amount
 
@@ -468,8 +467,7 @@ def render_debug(con, symbol: str) -> None:
     st.subheader("Debug")
     st.write("DB:", str(DB_PATH))
     st.write("Streamlit Cloud mode:", is_streamlit_cloud())
-    if is_streamlit_cloud():
-        st.info("Bybit disabled on Streamlit Cloud due to API restrictions (HTTP 403).")
+    st.write("Live exchanges:", list(LIVE_EXCHANGES))
 
     exchanges = list_exchanges(con)
     exchange_names = [str(row["name"]) for row in exchanges]
@@ -539,10 +537,12 @@ if "fallback_exchanges" not in st.session_state:
 if fallback_used:
     st.session_state["fallback_exchanges"] = fallback_used
 if refresh_failures:
-    st.warning(
-        "Live quote refresh issues: "
-        + "; ".join([f"{name}: {error}" for name, error in refresh_failures.items()])
-    )
+    refresh_failures = {name: err for name, err in refresh_failures.items() if name in LIVE_EXCHANGES}
+    if refresh_failures:
+        st.warning(
+            "Live quote refresh issues: "
+            + "; ".join([f"{name}: {error}" for name, error in refresh_failures.items()])
+        )
 
 try:
     df = build_comparison_dataframe(con, symbol=symbol, amount=float(amount))
