@@ -17,7 +17,8 @@ from fees_service import (
     save_exchange_fees,
 )
 
-LIVE_EXCHANGES = ("Bitvavo", "Kraken", "Coinbase", "Binance")
+# ✅ Alleen exchanges die op Streamlit Cloud werken (geen Binance/Bybit)
+LIVE_EXCHANGES = ("Bitvavo", "Kraken", "Coinbase")
 
 
 st.set_page_config(
@@ -156,7 +157,10 @@ def render_header() -> None:
                 st.markdown("### KiralyAI")
 
         with right_col:
-            st.markdown('<div class="header-subtitle">Crypto Exchange Cost Dashboard</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="header-subtitle">Crypto Exchange Cost Dashboard</div>',
+                unsafe_allow_html=True,
+            )
 
         st.divider()
 
@@ -187,7 +191,11 @@ def _get_dashboard_exchanges(con) -> list[str]:
     supported = set(get_supported_exchange_names())
     allowed = set(LIVE_EXCHANGES)
     rows = list_exchanges(con)
-    return [str(row["name"]) for row in rows if str(row["name"]) in supported and str(row["name"]) in allowed]
+    return [
+        str(row["name"])
+        for row in rows
+        if str(row["name"]) in supported and str(row["name"]) in allowed
+    ]
 
 
 def _refresh_live_quotes(
@@ -225,7 +233,11 @@ def render_controls(con):
             exchange_names_for_fetch = []
             st.error(f"Could not load exchanges for fetch: {exc}")
 
-        default_fetch_index = exchange_names_for_fetch.index("Bitvavo") if "Bitvavo" in exchange_names_for_fetch else 0
+        default_fetch_index = (
+            exchange_names_for_fetch.index("Bitvavo")
+            if "Bitvavo" in exchange_names_for_fetch
+            else 0
+        )
 
         c1, c2, c3, c4 = st.columns(4, gap="small", vertical_alignment="bottom")
 
@@ -235,7 +247,9 @@ def render_controls(con):
 
         with c2:
             st.markdown('<div class="control-label">Amount</div>', unsafe_allow_html=True)
-            amount = st.selectbox("Amount", [100, 1000, 10000], index=1, label_visibility="collapsed")
+            amount = st.selectbox(
+                "Amount", [100, 1000, 10000], index=1, label_visibility="collapsed"
+            )
 
         with c3:
             st.markdown('<div class="control-label">Live Exchange</div>', unsafe_allow_html=True)
@@ -252,7 +266,11 @@ def render_controls(con):
 
         with c4:
             st.markdown('<div class="control-label">Action</div>', unsafe_allow_html=True)
-            fetch_clicked = st.button("Fetch Live Quotes", disabled=not exchange_names_for_fetch, use_container_width=True)
+            fetch_clicked = st.button(
+                "Fetch Live Quotes",
+                disabled=not exchange_names_for_fetch,
+                use_container_width=True,
+            )
 
         if fetch_clicked:
             refreshed, failed, fallback_used = _refresh_live_quotes(
@@ -375,7 +393,10 @@ def render_admin(con) -> None:
                     st.error(str(exc))
 
             st.markdown("#### Delete exchange")
-            st.markdown('<div class="kiraly-subtle">Only remove exchanges you no longer want to compare.</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="kiraly-subtle">Only remove exchanges you no longer want to compare.</div>',
+                unsafe_allow_html=True,
+            )
             with st.form("delete_exchange_form"):
                 delete_exchange_name = st.selectbox(
                     "Exchange to delete",
@@ -566,5 +587,7 @@ render_debug(con, symbol=symbol)
 st.divider()
 render_admin(con)
 
-st.caption("Tip: vul echte fees + source links in via de Admin editor. Bitvavo/Coinbase spread is live als je een quote fetch doet.")
+st.caption(
+    "Tip: vul echte fees + source links in via de Admin editor. Bitvavo/Coinbase spread is live als je een quote fetch doet."
+)
 con.close()
